@@ -2,12 +2,19 @@
 
 import { useState } from "react"
 
-// Component imports only
-
 export default function LoansManager({ loans, setLoans, books, setBooks, students, setStudents }) {
   const [searchTerm, setSearchTerm] = useState("")
   const [filterStatus, setFilterStatus] = useState("todos")
   const [showModal, setShowModal] = useState(false)
+  const [showReturnModal, setShowReturnModal] = useState(false)
+  const [selectedLoan, setSelectedLoan] = useState(null)
+  const [returnFormData, setReturnFormData] = useState({
+    isDamaged: false,
+    multa: {
+      monto: "",
+      motivo: ""
+    }
+  })
   const [formData, setFormData] = useState({
     alumnoId: "",
     libroId: "",
@@ -86,26 +93,44 @@ export default function LoansManager({ loans, setLoans, books, setBooks, student
     setShowModal(false)
   }
 
+  // Iniciar proceso de devolución
+  const handleStartReturn = (loan) => {
+    setSelectedLoan(loan)
+    setReturnFormData({
+      isDamaged: false,
+      multa: {
+        monto: "",
+        motivo: ""
+      }
+    })
+    setShowReturnModal(true)
+  }
+
   // Manejar la devolución de un libro
-  const handleReturnBook = (id) => {
-    const loan = loans.find((l) => l.id === id)
-    if (!loan) return
+  const handleReturnBook = () => {
+    if (!selectedLoan) return
 
     // Actualizar el estado del préstamo
     const updatedLoans = loans.map((l) =>
-      l.id === id ? { ...l, estado: "devuelto" } : l
+      l.id === selectedLoan.id 
+        ? { 
+            ...l, 
+            estado: "devuelto",
+            multa: returnFormData.isDamaged ? returnFormData.multa : null 
+          } 
+        : l
     )
 
     // Actualizar disponibilidad del libro
     const updatedBooks = books.map((b) =>
-      b.id === loan.libroId
+      b.id === selectedLoan.libroId
         ? { ...b, disponibles: b.disponibles + 1 }
         : b
     )
 
     // Actualizar préstamos activos del alumno
     const updatedStudents = students.map((s) =>
-      s.id === loan.alumnoId
+      s.id === selectedLoan.alumnoId
         ? { ...s, prestamosActivos: s.prestamosActivos - 1 }
         : s
     )
@@ -113,10 +138,13 @@ export default function LoansManager({ loans, setLoans, books, setBooks, student
     setLoans(updatedLoans)
     setBooks(updatedBooks)
     setStudents(updatedStudents)
+    setShowReturnModal(false)
+    setSelectedLoan(null)
   }
 
   const activeLoansCount = loans.filter((l) => l.estado === "activo").length
   const returnedLoansCount = loans.filter((l) => l.estado === "devuelto").length
+  const loansWithFinesCount = loans.filter((l) => l.multa).length
 
   return (
     <div>
@@ -158,14 +186,14 @@ export default function LoansManager({ loans, setLoans, books, setBooks, student
           </div>
         </div>
         <div className="col-12 col-md-4">
-          <div className="card bg-info bg-opacity-10">
+          <div className="card bg-warning bg-opacity-10">
             <div className="card-body d-flex align-items-center gap-3">
-              <div className="bg-info bg-opacity-25 rounded p-2">
-                <i className="bi bi-journal-text fs-3 text-info"></i>
+              <div className="bg-warning bg-opacity-25 rounded p-2">
+                <i className="bi bi-exclamation-triangle fs-3 text-warning"></i>
               </div>
               <div>
-                <p className="text-muted small mb-0">Total Préstamos</p>
-                <p className="h3 fw-bold mb-0">{loans.length}</p>
+                <p className="text-muted small mb-0">Con Multas</p>
+                <p className="h3 fw-bold mb-0">{loansWithFinesCount}</p>
               </div>
             </div>
           </div>
@@ -233,9 +261,17 @@ export default function LoansManager({ loans, setLoans, books, setBooks, student
                         <p className="text-muted small mb-0">ISBN: {book.isbn}</p>
                       </div>
                     </div>
-                    <span className={`badge ${loan.estado === "activo" ? "bg-info" : "bg-success"}`}>
-                      {loan.estado === "activo" ? "Activo" : "Devuelto"}
-                    </span>
+                    <div className="d-flex gap-2">
+                      {loan.multa && (
+                        <span className="badge bg-warning text-dark">
+                          <i className="bi bi-exclamation-triangle me-1"></i>
+                          Multa: ${loan.multa.monto}
+                        </span>
+                      )}
+                      <span className={`badge ${loan.estado === "activo" ? "bg-info" : "bg-success"}`}>
+                        {loan.estado === "activo" ? "Activo" : "Devuelto"}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="mb-3">
@@ -256,10 +292,16 @@ export default function LoansManager({ loans, setLoans, books, setBooks, student
                         <i className="bi bi-calendar-check me-1"></i>Devolución: {loan.fechaDevolucion}
                       </span>
                     </div>
+                    {loan.multa && (
+                      <p className="small mt-2 text-warning">
+                        <i className="bi bi-exclamation-circle me-1"></i>
+                        Motivo de multa: {loan.multa.motivo}
+                      </p>
+                    )}
                   </div>
 
                   {loan.estado === "activo" && (
-                    <button className="btn btn-sm btn-success w-100" onClick={() => handleReturnBook(loan.id)}>
+                    <button className="btn btn-sm btn-success w-100" onClick={() => handleStartReturn(loan)}>
                       <i className="bi bi-check-circle me-1"></i>Marcar como Devuelto
                     </button>
                   )}
@@ -277,6 +319,85 @@ export default function LoansManager({ loans, setLoans, books, setBooks, student
         </div>
       )}
 
+      {/* Modal de Devolución */}
+      {showReturnModal && selectedLoan && (
+        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Devolución de Libro</h5>
+                <button type="button" className="btn-close" onClick={() => setShowReturnModal(false)}></button>
+              </div>
+              <div className="modal-body">
+                <div className="mb-3">
+                  <div className="form-check">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      id="isDamaged"
+                      checked={returnFormData.isDamaged}
+                      onChange={(e) => setReturnFormData({
+                        ...returnFormData,
+                        isDamaged: e.target.checked,
+                        multa: e.target.checked ? returnFormData.multa : { monto: "", motivo: "" }
+                      })}
+                    />
+                    <label className="form-check-label" htmlFor="isDamaged">
+                      ¿El libro presenta daños?
+                    </label>
+                  </div>
+                </div>
+
+                {returnFormData.isDamaged && (
+                  <>
+                    <div className="mb-3">
+                      <label className="form-label">Monto de la Multa ($)</label>
+                      <input
+                        type="number"
+                        className="form-control"
+                        value={returnFormData.multa.monto}
+                        onChange={(e) => setReturnFormData({
+                          ...returnFormData,
+                          multa: { ...returnFormData.multa, monto: e.target.value }
+                        })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label">Motivo de la Multa</label>
+                      <textarea
+                        className="form-control"
+                        value={returnFormData.multa.motivo}
+                        onChange={(e) => setReturnFormData({
+                          ...returnFormData,
+                          multa: { ...returnFormData.multa, motivo: e.target.value }
+                        })}
+                        placeholder="Describe los daños encontrados..."
+                        rows="3"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setShowReturnModal(false)}>
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-success"
+                  onClick={handleReturnBook}
+                  disabled={returnFormData.isDamaged && (!returnFormData.multa.monto || !returnFormData.multa.motivo)}
+                >
+                  Confirmar Devolución
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Nuevo Préstamo */}
       {showModal && (
         <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
           <div className="modal-dialog">
